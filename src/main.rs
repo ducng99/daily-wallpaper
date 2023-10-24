@@ -2,6 +2,7 @@ mod wallpaper_response;
 
 use chrono::{Duration, Local};
 use std::path::Path;
+use wallpaper_response::WallpaperResponse;
 
 fn main() {
     let current_time = Local::now();
@@ -37,15 +38,20 @@ fn remove_wallpaper(date: String) {
     }
 }
 
-fn get_today_wallpaper(width: i32, height: i32) -> Option<String> {
+fn get_today_wallpaper(width: i32, height: i32) -> String {
     let url = format!("https://bingwallpaper.microsoft.com/api/BWC/getHPImages?screenWidth={}&screenHeight={}&env=live", width, height);
+    let request = reqwest::blocking::get(&url).unwrap_or(None);
 
-    let request = async {
-        reqwest::get(&url).await?.text().await?
-    };
+    if request != None {
+        let response_text = request.text().unwrap_or_default();
+        if !response_text.is_empty() {
+            let wallpaper_response: WallpaperResponse = serde_json::from_str(&response_text).unwrap_or(None);
 
-    if request.is_ok() {
-        let response: WallpaperResponse = serde_json::from_str(&request)?;
-
+            if wallpaper_response.is_some() {
+                return wallpaper_response.unwrap().images[0].url;
+            }
+        }
     }
+
+    String::from("")
 }

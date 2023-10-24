@@ -7,5 +7,5 @@ pub struct WallpaperResponse {
 
 #[derive(Deserialize)]
 pub struct Image {
-    url: String,
+    pub url: String,
 }
