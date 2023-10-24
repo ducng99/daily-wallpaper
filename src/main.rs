@@ -2,7 +2,8 @@ mod wallpaper_response;
 
 use chrono::{Duration, Local};
 use clap::Parser;
-use std::path::Path;
+use once_cell::sync::Lazy;
+use std::path::PathBuf;
 use wallpaper_response::WallpaperResponse;
 
 #[derive(Parser)]
@@ -13,7 +14,8 @@ struct Args {
     height: i32,
 }
 
-const WALLPAPER_CACHE_PATH: &str = "/tmp/wallpaper-cache";
+static WALLPAPER_CACHE_PATH: Lazy<PathBuf> =
+    Lazy::new(|| std::env::temp_dir().join("wallpaper-cache"));
 
 fn main() {
     let args = Args::parse();
@@ -33,14 +35,15 @@ fn main() {
     if today_wallpaper == None {
         remove_wallpaper(yesterday_formatted.to_string());
         if let Some(wallpaper_url) = get_today_wallpaper(args.width, args.height) {
-            let wallpaper_path = Path::new(WALLPAPER_CACHE_PATH)
+            let wallpaper_path = WALLPAPER_CACHE_PATH
                 .join(current_date_formatted.to_string())
                 .with_extension("jpg");
 
             if let Ok(mut response_image) = reqwest::blocking::get(&wallpaper_url) {
-                if std::fs::create_dir_all(WALLPAPER_CACHE_PATH).is_ok() {
-                    if let Ok(mut file) = std::fs::File::create(wallpaper_path) {
+                if std::fs::create_dir_all(WALLPAPER_CACHE_PATH.clone()).is_ok() {
+                    if let Ok(mut file) = std::fs::File::create(wallpaper_path.clone()) {
                         let _ = response_image.copy_to(&mut file);
+                        println!("Wallpaper saved to {}", wallpaper_path.to_str().unwrap_or_default());
                     } else {
                         println!("Failed saving wallpaper image");
                     }
@@ -58,7 +61,7 @@ fn main() {
 
 // Get today's wallpaper path from cache if exist. If not, return None.
 fn get_today_wallpaper_cache(date: String) -> Option<String> {
-    let path = Path::new("/tmp/wallpaper-cache").join(date);
+    let path = WALLPAPER_CACHE_PATH.join(date);
 
     if path.exists() {
         let path_str = path.to_str().unwrap_or_default().to_owned();
@@ -70,7 +73,7 @@ fn get_today_wallpaper_cache(date: String) -> Option<String> {
 
 // Remove yesterday's wallpaper from cache if exists
 fn remove_wallpaper(date: String) {
-    let path = Path::new("/tmp/wallpaper-cache").join(date);
+    let path = WALLPAPER_CACHE_PATH.join(date);
 
     if path.exists() {
         let _ = std::fs::remove_file(path);
