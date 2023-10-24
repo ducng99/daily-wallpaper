@@ -2,39 +2,81 @@ name: Rust
 
 on:
   push:
-    tags: [ 'v*.*.*' ]
+    tags: ["v*.*.*"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
+    runs-on: ${{ matrix.runner }}
 
+    strategy:
+      matrix:
+        include:
+          - name: linux-amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: win-amd64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macos-amd64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+          - name: macos-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Rustup add target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "${{ matrix.target }}"
+
+      - name: Build
+        run: cargo build --verbose --release --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/daily-wallpaper${{ matrix.name == 'win-amd64' && '.exe' || '' }}
+
+  release:
     runs-on: ubuntu-latest
+    needs: build
+
     permissions:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
 
-    - name: Install deps
-      run: sudo apt-get install libssl-dev pkg-config -y
+      - name: Rename artifacts
+        run: |
+          for file in */daily-wallpaper* ; do
+            extension=$([[ "$file" = *.* ]] && echo ".${file##*.}" || echo '')
+            mv -- "$file" "./daily-wallpaper_${file%/*}$extension";
+          done
+        working-directory: artifacts
 
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Build
-      run: cargo build --verbose --release
-
-    - uses: softprops/action-gh-release@v1
-      name: Create a release
-      with:
-        fail_on_unmatched_files: true
-        files: target/release/daily-wallpaper
+      - name: Create a release
+        uses: softprops/action-gh-release@v1
+        with:
+          fail_on_unmatched_files: true
+          files: artifacts/*
