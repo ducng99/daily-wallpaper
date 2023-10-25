@@ -97,14 +97,14 @@ fn main() -> ExitCode {
 
 // Checks if today's wallpaper exists in cache
 fn has_today_wallpaper_cache(date: String) -> bool {
-    let path = CONFIGS.path.join(date);
+    let path = CONFIGS.path.join(date).with_extension("jpg");
 
     path.exists()
 }
 
 // Remove yesterday's wallpaper from cache if exists
 fn remove_wallpaper(date: String) {
-    let path = CONFIGS.path.join(date);
+    let path = CONFIGS.path.join(date).with_extension("jpg");
 
     if path.exists() {
         let _ = std::fs::remove_file(path);
