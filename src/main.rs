@@ -1,6 +1,6 @@
 mod wallpaper_response;
 
-use chrono::{Duration, Local};
+use chrono::{Duration, Utc};
 use clap::Parser;
 use once_cell::sync::Lazy;
 use std::{path::PathBuf, process::ExitCode};
@@ -44,16 +44,23 @@ static CONFIGS: Lazy<Configs> = Lazy::new(|| {
 });
 
 fn main() -> ExitCode {
-    let current_time = Local::now();
-    let current_date_formatted = current_time.format("%Y-%m-%d");
+    let current_time = Utc::now();
+    let current_date_formatted = current_time.format("%Y%m%d");
     let yesterday = current_time - Duration::days(1);
-    let yesterday_formatted = yesterday.format("%Y-%m-%d");
+    let yesterday_formatted = yesterday.format("%Y%m%d");
 
-    let today_wallpaper = get_today_wallpaper_cache(current_date_formatted.to_string());
+    let today_wallpaper = has_today_wallpaper_cache(current_date_formatted.to_string());
 
-    if today_wallpaper == None {
+    if today_wallpaper {
+        println!("Wallpaper already exists, skipping");
+    } else {
         remove_wallpaper(yesterday_formatted.to_string());
-        if let Some(wallpaper_url) = get_today_wallpaper(CONFIGS.width, CONFIGS.height) {
+
+        if let Some(wallpaper_url) = get_today_wallpaper(
+            CONFIGS.width,
+            CONFIGS.height,
+            current_date_formatted.to_string(),
+        ) {
             let wallpaper_path = CONFIGS
                 .path
                 .join(current_date_formatted.to_string())
@@ -67,7 +74,6 @@ fn main() -> ExitCode {
                             "Wallpaper saved to {}",
                             wallpaper_path.to_str().unwrap_or_default()
                         );
-                        return ExitCode::SUCCESS;
                     } else {
                         println!("Failed saving wallpaper image");
                         return ExitCode::FAILURE;
@@ -81,7 +87,7 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         } else {
-            println!("Failed to get today's wallpaper");
+            println!("Failed to get today's wallpaper. Maybe it's not ready yet?");
             return ExitCode::FAILURE;
         }
     }
@@ -89,16 +95,11 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-// Get today's wallpaper path from cache if exist. If not, return None.
-fn get_today_wallpaper_cache(date: String) -> Option<String> {
+// Checks if today's wallpaper exists in cache
+fn has_today_wallpaper_cache(date: String) -> bool {
     let path = CONFIGS.path.join(date);
 
-    if path.exists() {
-        let path_str = path.to_str().unwrap_or_default().to_owned();
-        Some(path_str)
-    } else {
-        None
-    }
+    path.exists()
 }
 
 // Remove yesterday's wallpaper from cache if exists
@@ -110,7 +111,7 @@ fn remove_wallpaper(date: String) {
     }
 }
 
-fn get_today_wallpaper(width: u32, height: u32) -> Option<String> {
+fn get_today_wallpaper(width: u32, height: u32, current_date: String) -> Option<String> {
     let url = format!("https://bingwallpaper.microsoft.com/api/BWC/getHPImages?screenWidth={}&screenHeight={}&env=live", width, height);
     if let Ok(response) = reqwest::blocking::get(&url) {
         let response_text = response.text().unwrap_or_default();
@@ -119,7 +120,9 @@ fn get_today_wallpaper(width: u32, height: u32) -> Option<String> {
                 serde_json::from_str::<WallpaperResponse>(&response_text)
             {
                 if let Some(image_metadata) = wallpaper_response.images.get(0) {
-                    return Some(image_metadata.url.to_owned());
+                    if image_metadata.startdate == current_date {
+                        return Some(image_metadata.url.to_owned());
+                    }
                 }
             }
         }
