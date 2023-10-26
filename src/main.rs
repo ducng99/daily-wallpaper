@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use clap::Parser;
 use once_cell::sync::Lazy;
 use std::{path::PathBuf, process::ExitCode};
-use wallpaper_response::WallpaperResponse;
+use wallpaper_response::{Image, WallpaperResponse};
 
 #[derive(Parser)]
 struct Args {
@@ -33,7 +33,7 @@ static CONFIGS: Lazy<Configs> = Lazy::new(|| {
     let mut configs = Configs {
         width: args.width,
         height: args.height,
-        path: PathBuf::from(args.path.clone()),
+        path: PathBuf::from(&args.path),
     };
 
     if args.path.is_empty() {
@@ -44,66 +44,70 @@ static CONFIGS: Lazy<Configs> = Lazy::new(|| {
 });
 
 fn main() -> ExitCode {
-    let current_time = Utc::now();
-    let current_date_formatted = current_time.format("%Y%m%d");
-    let yesterday = current_time - Duration::days(1);
-    let yesterday_formatted = yesterday.format("%Y%m%d");
+    let today_time = Utc::now();
+    let today_date_formatted = today_time.format("%Y%m%d").to_string();
+    let yesterday_time = today_time - Duration::days(1);
+    let yesterday_date_formatted = yesterday_time.format("%Y%m%d").to_string();
 
-    let today_wallpaper = has_today_wallpaper_cache(current_date_formatted.to_string());
+    let today_wallpaper = has_wallpaper_for_date(&today_date_formatted);
 
     if today_wallpaper {
         println!("Wallpaper already exists, skipping");
+        ExitCode::SUCCESS
     } else {
-        remove_wallpaper(yesterday_formatted.to_string());
+        println!("Attempt to download wallpaper for today...");
 
-        if let Some(wallpaper_url) = get_today_wallpaper(
-            CONFIGS.width,
-            CONFIGS.height,
-            current_date_formatted.to_string(),
-        ) {
-            let wallpaper_path = CONFIGS
-                .path
-                .join(current_date_formatted.to_string())
-                .with_extension("jpg");
-
-            if let Ok(mut response_image) = reqwest::blocking::get(&wallpaper_url) {
-                if std::fs::create_dir_all(CONFIGS.path.clone()).is_ok() {
-                    if let Ok(mut file) = std::fs::File::create(wallpaper_path.clone()) {
-                        let _ = response_image.copy_to(&mut file);
-                        println!(
-                            "Wallpaper saved to {}",
-                            wallpaper_path.to_str().unwrap_or_default()
-                        );
-                    } else {
-                        println!("Failed saving wallpaper image");
-                        return ExitCode::FAILURE;
+        if let Some(wallpaper_images) = get_wallpapers(CONFIGS.width, CONFIGS.height) {
+            if let Some(wallpaper_url) =
+                get_wallpaper_for_date(&today_date_formatted, &wallpaper_images)
+            {
+                match save_wallpaper(&wallpaper_url, &today_date_formatted) {
+                    Ok(_) => {
+                        remove_wallpaper(&yesterday_date_formatted);
+                        ExitCode::SUCCESS
                     }
-                } else {
-                    println!("Failed to create wallpaper cache directory");
-                    return ExitCode::FAILURE;
+                    Err(msg) => {
+                        eprintln!("ERROR: {}", msg);
+                        ExitCode::FAILURE
+                    }
                 }
             } else {
-                println!("Failed downloading wallpaper image");
-                return ExitCode::FAILURE;
+                println!("No wallpaper for today, getting latest wallpaper...");
+
+                if let Some((date, url)) = get_wallpaper_latest(&wallpaper_images) {
+                    if !has_wallpaper_for_date(&date) {
+                        match save_wallpaper(&url, &date) {
+                            Ok(_) => ExitCode::SUCCESS,
+                            Err(msg) => {
+                                eprintln!("ERROR: {}", msg);
+                                ExitCode::FAILURE
+                            }
+                        }
+                    } else {
+                        println!("Latest wallpaper already exists, skipping");
+                        ExitCode::SUCCESS
+                    }
+                } else {
+                    eprintln!("Failed getting latest wallpaper.");
+                    ExitCode::FAILURE
+                }
             }
         } else {
-            println!("Failed to get today's wallpaper. Maybe it's not ready yet?");
-            return ExitCode::FAILURE;
+            eprintln!("Failed getting wallpapers.");
+            ExitCode::FAILURE
         }
     }
-
-    ExitCode::SUCCESS
 }
 
-// Checks if today's wallpaper exists in cache
-fn has_today_wallpaper_cache(date: String) -> bool {
+// Checks if a wallpaper exists for a specified date
+fn has_wallpaper_for_date(date: &String) -> bool {
     let path = CONFIGS.path.join(date).with_extension("jpg");
 
     path.exists()
 }
 
 // Remove yesterday's wallpaper from cache if exists
-fn remove_wallpaper(date: String) {
+fn remove_wallpaper(date: &String) {
     let path = CONFIGS.path.join(date).with_extension("jpg");
 
     if path.exists() {
@@ -111,7 +115,7 @@ fn remove_wallpaper(date: String) {
     }
 }
 
-fn get_today_wallpaper(width: u32, height: u32, current_date: String) -> Option<String> {
+fn get_wallpapers(width: u32, height: u32) -> Option<Vec<Image>> {
     let url = format!("https://bingwallpaper.microsoft.com/api/BWC/getHPImages?screenWidth={}&screenHeight={}&env=live", width, height);
     if let Ok(response) = reqwest::blocking::get(&url) {
         let response_text = response.text().unwrap_or_default();
@@ -119,14 +123,58 @@ fn get_today_wallpaper(width: u32, height: u32, current_date: String) -> Option<
             if let Ok(wallpaper_response) =
                 serde_json::from_str::<WallpaperResponse>(&response_text)
             {
-                if let Some(image_metadata) = wallpaper_response.images.get(0) {
-                    if image_metadata.startdate == current_date {
-                        return Some(image_metadata.url.to_owned());
-                    }
-                }
+                return Some(wallpaper_response.images);
             }
         }
     }
 
     None
+}
+
+fn get_wallpaper_for_date(date: &String, images: &Vec<Image>) -> Option<String> {
+    for image_metadata in images {
+        if image_metadata.startdate == date.to_owned() {
+            return Some(image_metadata.url.to_string());
+        }
+    }
+
+    None
+}
+
+fn get_wallpaper_latest(images: &Vec<Image>) -> Option<(String, String)> {
+    if let Some(image_metadata) = images.first() {
+        return Some((
+            image_metadata.startdate.to_owned(),
+            image_metadata.url.to_string(),
+        ));
+    }
+
+    None
+}
+
+fn save_wallpaper(url: &String, date: &String) -> Result<(), &'static str> {
+    let wallpaper_path = CONFIGS.path.join(date).with_extension("jpg");
+
+    if let Ok(mut response_image) = reqwest::blocking::get(url) {
+        if std::fs::create_dir_all(CONFIGS.path.clone()).is_ok() {
+            if let Ok(mut file) = std::fs::File::create(&wallpaper_path) {
+                if let Ok(_) = response_image.copy_to(&mut file) {
+                    println!(
+                        "Wallpaper saved to {}",
+                        wallpaper_path.to_str().unwrap_or_default()
+                    );
+
+                    Ok(())
+                } else {
+                    Err("Failed saving wallpaper image")
+                }
+            } else {
+                Err("Failed saving wallpaper image")
+            }
+        } else {
+            Err("Failed to create wallpaper cache directory")
+        }
+    } else {
+        Err("Failed downloading wallpaper image")
+    }
 }
