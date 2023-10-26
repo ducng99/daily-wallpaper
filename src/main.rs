@@ -19,12 +19,15 @@ struct Args {
         help = "Path to save wallpaper image. Defaults to <tmp_dir>/wallpaper_cache"
     )]
     path: String,
+    #[clap(long, help = "Disable setting wallpaper")]
+    noset: bool,
 }
 
 struct Configs {
     width: u32,
     height: u32,
     path: PathBuf,
+    disable_set_wallpaper: bool,
 }
 
 static CONFIGS: Lazy<Configs> = Lazy::new(|| {
@@ -34,6 +37,7 @@ static CONFIGS: Lazy<Configs> = Lazy::new(|| {
         width: args.width,
         height: args.height,
         path: PathBuf::from(&args.path),
+        disable_set_wallpaper: args.noset,
     };
 
     if args.path.is_empty() {
@@ -52,10 +56,10 @@ fn main() -> ExitCode {
     let today_wallpaper = has_wallpaper_for_date(&today_date_formatted);
 
     if today_wallpaper {
-        println!("Wallpaper already exists, skipping");
+        println!("Wallpaper already exists, skipping download");
         ExitCode::SUCCESS
     } else {
-        println!("Attempt to download wallpaper for today...");
+        println!("Download wallpaper for today...");
 
         if let Some(wallpaper_images) = get_wallpapers(CONFIGS.width, CONFIGS.height) {
             if let Some(wallpaper_url) =
@@ -64,6 +68,17 @@ fn main() -> ExitCode {
                 match save_wallpaper(&wallpaper_url, &today_date_formatted) {
                     Ok(_) => {
                         remove_wallpaper(&yesterday_date_formatted);
+
+                        if !CONFIGS.disable_set_wallpaper {
+                            let _ = wallpaper::set_from_path(
+                                CONFIGS
+                                    .path
+                                    .join(&today_date_formatted)
+                                    .with_extension("jpg")
+                                    .to_str()
+                                    .unwrap_or_default(),
+                            );
+                        }
                         ExitCode::SUCCESS
                     }
                     Err(msg) => {
@@ -77,7 +92,19 @@ fn main() -> ExitCode {
                 if let Some((date, url)) = get_wallpaper_latest(&wallpaper_images) {
                     if !has_wallpaper_for_date(&date) {
                         match save_wallpaper(&url, &date) {
-                            Ok(_) => ExitCode::SUCCESS,
+                            Ok(_) => {
+                                if !CONFIGS.disable_set_wallpaper {
+                                    let _ = wallpaper::set_from_path(
+                                        CONFIGS
+                                            .path
+                                            .join(&date)
+                                            .with_extension("jpg")
+                                            .to_str()
+                                            .unwrap_or_default(),
+                                    );
+                                }
+                                ExitCode::SUCCESS
+                            }
                             Err(msg) => {
                                 eprintln!("ERROR: {}", msg);
                                 ExitCode::FAILURE
