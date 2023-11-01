@@ -53,9 +53,8 @@ fn main() -> ExitCode {
     let yesterday_time = today_time - Duration::days(1);
     let yesterday_date_formatted = yesterday_time.format("%Y%m%d").to_string();
 
-    let today_wallpaper = has_wallpaper_for_date(&today_date_formatted);
-
-    if today_wallpaper {
+    if has_wallpaper_for_date(&today_date_formatted) {
+        set_wallpaper(&today_date_formatted);
         println!("Wallpaper already exists, skipping download");
         ExitCode::SUCCESS
     } else {
@@ -68,17 +67,8 @@ fn main() -> ExitCode {
                 match save_wallpaper(&wallpaper_url, &today_date_formatted) {
                     Ok(_) => {
                         remove_wallpaper(&yesterday_date_formatted);
+                        set_wallpaper(&today_date_formatted);
 
-                        if !CONFIGS.disable_set_wallpaper {
-                            let _ = wallpaper::set_from_path(
-                                CONFIGS
-                                    .path
-                                    .join(&today_date_formatted)
-                                    .with_extension("jpg")
-                                    .to_str()
-                                    .unwrap_or_default(),
-                            );
-                        }
                         ExitCode::SUCCESS
                     }
                     Err(msg) => {
@@ -93,16 +83,7 @@ fn main() -> ExitCode {
                     if !has_wallpaper_for_date(&date) {
                         match save_wallpaper(&url, &date) {
                             Ok(_) => {
-                                if !CONFIGS.disable_set_wallpaper {
-                                    let _ = wallpaper::set_from_path(
-                                        CONFIGS
-                                            .path
-                                            .join(&date)
-                                            .with_extension("jpg")
-                                            .to_str()
-                                            .unwrap_or_default(),
-                                    );
-                                }
+                                set_wallpaper(&date);
                                 ExitCode::SUCCESS
                             }
                             Err(msg) => {
@@ -111,6 +92,7 @@ fn main() -> ExitCode {
                             }
                         }
                     } else {
+                        set_wallpaper(&date);
                         println!("Latest wallpaper already exists, skipping");
                         ExitCode::SUCCESS
                     }
@@ -203,5 +185,20 @@ fn save_wallpaper(url: &String, date: &String) -> Result<(), &'static str> {
         }
     } else {
         Err("Failed downloading wallpaper image")
+    }
+}
+
+fn set_wallpaper(date: &String) {
+    if !CONFIGS.disable_set_wallpaper {
+        let _ = wallpaper::set_from_path(
+            CONFIGS
+                .path
+                .join(&date)
+                .with_extension("jpg")
+                .to_str()
+                .unwrap_or_default(),
+        );
+
+        let _ = wallpaper::set_mode(wallpaper::Mode::Span);
     }
 }
