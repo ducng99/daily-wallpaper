@@ -32,7 +32,7 @@ No tests exist in this repo.
 
 ## Toolchain
 
-- Pinned to Rust 1.85 via `rust-toolchain.toml`
+- Pinned to Rust 1.95 via `rust-toolchain.toml`
 - Edition 2024
 
 ## CI (`.github/workflows/build.yml`)
