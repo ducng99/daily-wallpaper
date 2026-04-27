@@ -28,9 +28,9 @@ jobs:
             target: aarch64-apple-darwin
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -49,23 +49,23 @@ jobs:
         run: cargo build --verbose --release --target ${{ matrix.target }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: target/${{ matrix.target }}/release/daily-wallpaper${{ matrix.name == 'win-amd64' && '.exe' || '' }}
 
   changelog:
     name: Generate changelog
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     outputs:
       release_body: ${{ steps.git-cliff.outputs.content }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Generate a changelog
-        uses: orhun/git-cliff-action@v2
+        uses: orhun/git-cliff-action@v4
         id: git-cliff
         with:
           config: cliff.toml
@@ -84,7 +84,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -97,7 +97,7 @@ jobs:
         working-directory: artifacts
 
       - name: Create a release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           body: "${{ needs.changelog.outputs.release_body }}"
           fail_on_unmatched_files: true
