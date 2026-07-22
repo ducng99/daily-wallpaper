@@ -2,7 +2,7 @@
 name = "daily-wallpaper"
 version = "2.0.1"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.97"
 license = "MIT"
 description = "Downloads and sets the Bing daily wallpaper"
 
