@@ -12,5 +12,5 @@ pub struct Image {
     /// Start date of the wallpaper in YYYYMMDD format.
     pub startdate: String,
     /// URL path to the wallpaper image.
-    pub url: String,
+    pub urlbase: String,
 }

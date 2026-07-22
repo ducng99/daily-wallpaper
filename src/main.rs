@@ -80,7 +80,7 @@ fn main() -> Result<()> {
 
     let latest = images.first().context("No wallpapers available from API")?;
     let date = latest.startdate.to_owned();
-    let url = latest.url.to_owned();
+    let url = latest.urlbase.to_owned();
 
     if !has_wallpaper_for_date(&date) {
         save_wallpaper(&url, &date)?;
@@ -105,7 +105,7 @@ fn remove_wallpaper(date: &str) {
 
 fn get_wallpapers(width: u32, height: u32) -> Result<Vec<wallpaper_response::Image>> {
     let url = format!(
-        "https://bingwallpaper.microsoft.com/api/BWC/getHPImages?screenWidth={}&screenHeight={}&env=live",
+        "https://services.bingapis.com/ge-apps/api/v2/bwc/hpimages?mkt=en-US&theme=bing&defaultBrowser=MF&dhpSetToBing=False&dseSetToBing=False&IsBicFilterEnabled=False&screenWidth={}&screenHeight={}",
         width, height
     );
     let response_text = reqwest::blocking::get(&url)
@@ -126,7 +126,7 @@ fn find_wallpaper_for_date<'a>(
     images
         .iter()
         .find(|img| img.startdate == date)
-        .map(|img| img.url.as_str())
+        .map(|img| img.urlbase.as_str())
 }
 
 fn save_wallpaper(url: &str, date: &str) -> Result<()> {
